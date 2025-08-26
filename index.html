@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Power Proposal: The Birir Residence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .kpi-value {
+            font-weight: 900;
+            font-size: 3rem;
+            line-height: 1;
+        }
+        .kpi-label {
+            font-weight: 600;
+            font-size: 1.125rem;
+        }
+        .section-title {
+            font-size: 2.25rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <header class="bg-[#003f5c] text-white text-center py-12 px-4">
+        <h1 class="text-4xl md:text-5xl font-bold mb-2">Powering the Future of the Birir Residence</h1>
+        <p class="text-lg md:text-xl max-w-3xl mx-auto text-gray-200">An Infographic on the Proposed Solar Energy Solution for Energy Independence and Financial Savings</p>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8">
+
+        <section id="overview" class="text-center mb-12">
+            <h2 class="section-title text-[#003f5c] mb-6">At a Glance: The Path to Energy Independence</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="card">
+                    <p class="kpi-value text-[#2f4b7c]">23-25</p>
+                    <p class="kpi-label">kWh Daily Usage</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-value text-[#665191]">8.15</p>
+                    <p class="kpi-label">kWp Solar System</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-value text-[#a05195]">~3</p>
+                    <p class="kpi-label">Year Payback</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-value text-[#d45087]">90-100%</p>
+                    <p class="kpi-label">Reduction in Bills</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="energy-profile" class="mb-12">
+            <div class="card">
+                <h2 class="section-title text-[#003f5c] mb-4">Understanding the Birir Residence's Energy Needs</h2>
+                <p class="text-lg mb-6 text-gray-600">The first step to energy independence is understanding current consumption. The Birir residence has a significant daily energy demand, primarily driven by lighting and essential appliances. This detailed audit forms the basis for a perfectly sized solar solution.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <h3 class="text-xl font-bold text-center mb-2 text-[#2f4b7c]">Daily Energy Consumption Breakdown (22.87 kWh)</h3>
+                        <div class="chart-container">
+                            <canvas id="consumptionChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-center mb-2 text-[#2f4b7c]">Peak Power Demand Analysis</h3>
+                         <p class="text-gray-600 mb-4 text-center">While daily energy usage is high, the potential peak power demand from all appliances running at once is nearly 19kW. The proposed 8kW inverter is sized to handle typical, not maximum, simultaneous loads, using smart prioritization.</p>
+                        <div class="bg-gray-100 p-6 rounded-lg">
+                            <div class="flex justify-between items-center border-b pb-2 mb-2">
+                                <span class="font-semibold">Total Potential Peak Load:</span>
+                                <span class="font-bold text-2xl text-[#d45087]">17,998 W</span>
+                            </div>
+                            <div class="flex justify-between items-center border-b pb-2 mb-2">
+                                <span class="font-semibold">Proposed Inverter Capacity:</span>
+                                <span class="font-bold text-2xl text-[#f95d6a]">8,000 W</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="font-semibold">Key High-Wattage Items:</span>
+                                <span class="text-right text-sm">Dishwasher (2000W), Cooker (2000W), Vacuum (1200W)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="solution" class="mb-12">
+             <div class="card">
+                <h2 class="section-title text-[#003f5c] mb-4">The Proposed Solar Solution</h2>
+                <p class="text-lg mb-6 text-gray-600">To meet and exceed the residence's energy needs, a powerful and reliable hybrid solar system is proposed. It combines high-output solar panels, a smart hybrid inverter, and significant battery storage to ensure power day and night, even during grid outages.</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                    <div class="bg-gray-100 p-6 rounded-lg">
+                        <div class="text-5xl mb-2">☀️</div>
+                        <h3 class="text-xl font-bold text-[#665191] mb-2">8.15 kWp Solar Array</h3>
+                        <p>14 x 585W Tier-1 panels generating ~48 kWh per day - nearly double the daily need.</p>
+                    </div>
+                    <div class="bg-gray-100 p-6 rounded-lg">
+                        <div class="text-5xl mb-2">🔋</div>
+                        <h3 class="text-xl font-bold text-[#a05195] mb-2">15 kWh Battery Storage</h3>
+                        <p>Two 5kWh LiFePO4 batteries providing 7-8.5 kWh of usable power for overnight needs.</p>
+                    </div>
+                    <div class="bg-gray-100 p-6 rounded-lg">
+                        <div class="text-5xl mb-2">⚡️</div>
+                        <h3 class="text-xl font-bold text-[#d45087] mb-2">8 kW Hybrid Inverter</h3>
+                        <p>The brain of the system, managing power flow and providing seamless grid backup.</p>
+                    </div>
+                </div>
+                <div class="mt-8">
+                     <h3 class="text-xl font-bold text-center mb-4 text-[#2f4b7c]">System Workflow: Powering Your Home 24/7</h3>
+                     <div class="flex flex-col md:flex-row justify-around items-center text-center">
+                        <div class="p-4">
+                            <div class="text-4xl mb-2">☀️</div>
+                            <p class="font-bold">Daytime</p>
+                            <p class="text-sm">Solar panels power the home directly, with excess energy charging the batteries.</p>
+                        </div>
+                        <div class="text-3xl text-[#ff7c43] mx-4">➡️</div>
+                        <div class="p-4">
+                            <div class="text-4xl mb-2">🌙</div>
+                            <p class="font-bold">Nighttime</p>
+                            <p class="text-sm">The home runs on clean, stored battery power.</p>
+                        </div>
+                         <div class="text-3xl text-[#ff7c43] mx-4">➡️</div>
+                        <div class="p-4">
+                            <div class="text-4xl mb-2">🔌</div>
+                            <p class="font-bold">Grid Backup</p>
+                            <p class="text-sm">The grid is used only when needed, ensuring 100% uptime.</p>
+                        </div>
+                     </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="investment" class="mb-12">
+            <div class="card">
+                <h2 class="section-title text-[#003f5c] mb-4">Financial Analysis: A Smart Investment</h2>
+                <p class="text-lg mb-6 text-gray-600">The solar system is not just an upgrade; it's a powerful financial asset. With a total investment of 756,043 KES, the system is projected to pay for itself in approximately two years, after which it generates pure savings.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <h3 class="text-xl font-bold text-center mb-2 text-[#2f4b7c]">Investment Cost Breakdown</h3>
+                        <div class="chart-container">
+                            <canvas id="investmentChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-center mb-2 text-[#2f4b7c]">5-Year Net Cash Flow Projection</h3>
+                        <div class="chart-container">
+                            <canvas id="roiChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-[#003f5c] text-white text-center py-6 px-4">
+        <p>This infographic visualizes the solar proposal by Solarise Insight Limited for the Birir Residence.</p>
+        <p class="text-sm text-gray-300">Data sourced from the official proposal and energy audit documents, August 2025.</p>
+    </footer>
+
+    <script>
+        const energeticPlayful = {
+            blue: '#003f5c',
+            purple: '#2f4b7c',
+            violet: '#665191',
+            magenta: '#a05195',
+            pink: '#d45087',
+            rose: '#f95d6a',
+            orange: '#ff7c43',
+            yellow: '#ffa600',
+        };
+
+        function wrapLabels(label, maxLength) {
+            if (typeof label !== 'string' || label.length <= maxLength) {
+                return label;
+            }
+            const words = label.split(' ');
+            let lines = [];
+            let currentLine = '';
+            words.forEach(word => {
+                if ((currentLine + word).length > maxLength) {
+                    lines.push(currentLine.trim());
+                    currentLine = '';
+                }
+                currentLine += word + ' ';
+            });
+            lines.push(currentLine.trim());
+            return lines;
+        }
+        
+        const tooltipTitleCallback = (tooltipItems) => {
+            const item = tooltipItems[0];
+            let label = item.chart.data.labels[item.dataIndex];
+            if (Array.isArray(label)) {
+                return label.join(' ');
+            }
+            return label;
+        };
+
+        const commonChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#4a5568',
+                        font: {
+                            family: "'Inter', sans-serif"
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: tooltipTitleCallback
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: { color: '#4a5568' },
+                    grid: { color: '#e2e8f0' }
+                },
+                x: {
+                    ticks: { color: '#4a5568' },
+                    grid: { display: false }
+                }
+            }
+        };
+
+        const consumptionData = {
+            labels: [
+                wrapLabels('Lighting', 16), 
+                wrapLabels('Refrigerator', 16), 
+                wrapLabels('Dishwasher', 16), 
+                wrapLabels('Entertainment & IT', 16),
+                wrapLabels('Kitchen Appliances', 16), 
+                wrapLabels('General Appliances', 16)
+            ],
+            datasets: [{
+                label: 'Daily Consumption (Wh)',
+                data: [8400, 4200, 2000, 2032, 1790, 4450],
+                backgroundColor: [
+                    energeticPlayful.yellow,
+                    energeticPlayful.orange,
+                    energeticPlayful.rose,
+                    energeticPlayful.pink,
+                    energeticPlayful.magenta,
+                    energeticPlayful.violet
+                ],
+                borderColor: '#ffffff',
+                borderWidth: 2
+            }]
+        };
+
+        new Chart(document.getElementById('consumptionChart'), {
+            type: 'doughnut',
+            data: consumptionData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                         labels: {
+                            color: '#4a5568',
+                            font: {
+                                family: "'Inter', sans-serif"
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                           title: tooltipTitleCallback
+                        }
+                    }
+                }
+            }
+        });
+
+        const investmentData = {
+            labels: [
+                wrapLabels('Battery Storage', 16), 
+                wrapLabels('PV Inverter', 16), 
+                wrapLabels('Solar Panels', 16), 
+                wrapLabels('Installation & Other', 16)
+            ],
+            datasets: [{
+                label: 'Cost (KES)',
+                data: [220000, 150000, 147420, 143623],
+                backgroundColor: [
+                    energeticPlayful.magenta,
+                    energeticPlayful.pink,
+                    energeticPlayful.rose,
+                    energeticPlayful.orange
+                ],
+                 borderColor: '#ffffff',
+                borderWidth: 2
+            }]
+        };
+
+        new Chart(document.getElementById('investmentChart'), {
+            type: 'pie',
+            data: investmentData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                         labels: {
+                            color: '#4a5568',
+                            font: {
+                                family: "'Inter', sans-serif"
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: tooltipTitleCallback
+                        }
+                    }
+                }
+            }
+        });
+
+        const roiData = {
+            labels: ['Year 0', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'],
+            datasets: [{
+                label: 'Net Cash Flow (KES)',
+                data: [-361466, -59613, 238638, 533196, 823960, 1101616],
+                borderColor: energeticPlayful.orange,
+                backgroundColor: 'rgba(255, 124, 67, 0.2)',
+                fill: true,
+                tension: 0.4
+            },
+            {
+                label: 'Cumulative Cost (KES)',
+                data: [676843, 687743, 699943, 713253, 727894, 743999],
+                borderColor: energeticPlayful.rose,
+                backgroundColor: 'transparent',
+                borderDash: [5, 5],
+                tension: 0.4
+            }]
+        };
+
+        new Chart(document.getElementById('roiChart'), {
+            type: 'line',
+            data: roiData,
+            options: commonChartOptions
+        });
+    </script>
+</body>
+</html>
