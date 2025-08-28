@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solarise Insight Limited - Monthly Reports</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F3F4F6;
+        }
+        .container {
+            max-width: 900px;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+        }
+        .nav-button-active {
+            background-color: #07575B;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 md:p-8">
+
+    <!-- Firebase SDK Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // UI elements
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const dataEntryPage = document.getElementById('data-entry-page');
+        const dashboardPage = document.getElementById('dashboard-page');
+        const reportForm = document.getElementById('report-form');
+        const reportSelector = document.getElementById('report-selector');
+        const viewDataEntryBtn = document.getElementById('view-data-entry-btn');
+        const viewDashboardBtn = document.getElementById('view-dashboard-btn');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const statusMessage = document.getElementById('status-message');
+        const generateSummaryBtn = document.getElementById('generate-summary-btn');
+        const summaryLoadingIndicator = document.getElementById('summary-loading-indicator');
+        const deleteReportBtn = document.getElementById('delete-report-btn');
+        const inventoryList = document.getElementById('inventory-list');
+        const addItemBtn = document.getElementById('add-item-btn');
+        const inventoryItemInput = document.getElementById('inventory-item-input');
+        const beginningInventoryInput = document.getElementById('beginning-inventory');
+        const stockReceivedInput = document.getElementById('stock-received');
+        const itemsDispatchedInput = document.getElementById('items-dispatched');
+        const salesForecastContainer = document.getElementById('sales-forecast-container');
+        
+        // Helper array for month names
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+
+        let userId = 'anonymous';
+        let unsubscribeFromReport = null;
+        let reportInventory = [];
+        let currentView = 'dashboard';
+
+        // Wait for authentication state to be ready before proceeding
+        async function initApp() {
+            try {
+                if (initialAuthToken) {
+                    const userCredential = await signInWithCustomToken(auth, initialAuthToken);
+                    userId = userCredential.user.uid;
+                } else {
+                    const userCredential = await signInAnonymously(auth);
+                    userId = userCredential.user.uid;
+                }
+                userIdDisplay.textContent = `User ID: ${userId}`;
+                console.log('Firebase initialized and user authenticated:', userId);
+                
+                await fetchAvailableReports();
+                generateForecastInputs();
+                
+                // Set default view
+                showPage(currentView);
+                
+                // Add event listener to prevent form submission on Enter key
+                reportForm.addEventListener('keydown', handleEnterKey);
+
+            } catch (error) {
+                console.error("Error during Firebase authentication:", error);
+                statusMessage.textContent = 'Error: Could not connect to the database. Check console for details.';
+                statusMessage.classList.add('text-red-500');
+                loadingIndicator.classList.add('hidden');
+                dataEntryPage.classList.remove('hidden');
+            }
+        }
+        
+        // Function to handle the Enter key press
+        function handleEnterKey(event) {
+            if (event.key === 'Enter') {
+                const formElements = Array.from(reportForm.elements).filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 && el.id !== 'add-item-btn' && el.id !== 'generate-summary-btn');
+                const currentElement = event.target;
+                const currentIndex = formElements.indexOf(currentElement);
+                
+                // If it's the inventory section, check if we need to add a new item
+                if (currentElement.id === 'items-dispatched') {
+                    event.preventDefault(); // Prevent form submission
+                    addItemBtn.click();
+                    // Move focus to the first inventory input after adding the item
+                    document.getElementById('inventory-item-input').focus();
+                } else if (currentIndex > -1 && currentIndex < formElements.length - 1) {
+                    event.preventDefault(); // Prevent form submission
+                    formElements[currentIndex + 1].focus();
+                } else if (currentIndex === formElements.length - 1) {
+                    // This is the last input field, so let's prevent form submission
+                    event.preventDefault();
+                }
+            }
+        }
+        
+        // Function to dynamically generate sales forecast input fields
+        function generateForecastInputs() {
+            const today = new Date();
+            salesForecastContainer.innerHTML = '';
+            for (let i = 0; i < 6; i++) {
+                const forecastDate = new Date(today.getFullYear(), today.getMonth() + i + 1, 1);
+                const month = monthNames[forecastDate.getMonth()] + ' ' + forecastDate.getFullYear();
+                
+                const html = `
+                    <div class="border border-gray-300 rounded-md p-4 mb-4">
+                        <h4 class="text-md font-semibold text-gray-700 mb-2">${month} Forecast</h4>
+                        <div>
+                            <label for="forecast-sales-${i}" class="block text-sm font-medium text-gray-700">Forecasted Sales (KES)</label>
+                            <input type="number" id="forecast-sales-${i}" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 550000" required>
+                        </div>
+                        <div class="mt-2">
+                            <label for="forecast-assumptions-${i}" class="block text-sm font-medium text-gray-700">Key Activities & Assumptions</label>
+                            <textarea id="forecast-assumptions-${i}" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" rows="2" placeholder="e.g., Launch of new product line, expansion into a new region." required></textarea>
+                        </div>
+                    </div>
+                `;
+                salesForecastContainer.insertAdjacentHTML('beforeend', html);
+            }
+        }
+
+        // Function to switch between pages
+        function showPage(pageName) {
+            loadingIndicator.classList.add('hidden');
+            currentView = pageName;
+            
+            // Toggle button styles
+            viewDataEntryBtn.classList.remove('nav-button-active');
+            viewDashboardBtn.classList.remove('nav-button-active');
+            
+            dataEntryPage.classList.add('hidden');
+            dashboardPage.classList.add('hidden');
+
+            if (pageName === 'data-entry') {
+                dataEntryPage.classList.remove('hidden');
+                viewDataEntryBtn.classList.add('nav-button-active');
+            } else {
+                dashboardPage.classList.remove('hidden');
+                viewDashboardBtn.classList.add('nav-button-active');
+            }
+        }
+
+        // Fetch available reports and populate the dropdown
+        async function fetchAvailableReports() {
+            try {
+                const reportsCollectionRef = collection(db, `artifacts/${appId}/public/data/boardReports`);
+                const querySnapshot = await getDocs(reportsCollectionRef);
+                const reports = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // Sort the retrieved data in-memory since Firestore orderBy() requires an index.
+                    reports.push({ id: doc.id, month: data.month, lastUpdated: data.lastUpdated.toDate() });
+                });
+
+                // Sort reports by lastUpdated date descending
+                reports.sort((a, b) => b.lastUpdated - a.lastUpdated);
+
+                reportSelector.innerHTML = '';
+                if (reports.length > 0) {
+                    reports.forEach(report => {
+                        const option = document.createElement('option');
+                        option.value = report.id;
+                        option.textContent = report.month;
+                        reportSelector.appendChild(option);
+                    });
+                    // Select the latest report and set up listener
+                    reportSelector.value = reports[0].id;
+                    setupFirestoreListener(reports[0].id);
+                    deleteReportBtn.disabled = false;
+                } else {
+                    const option = document.createElement('option');
+                    option.textContent = 'No reports available';
+                    reportSelector.appendChild(option);
+                    renderInfographic(null);
+                    deleteReportBtn.disabled = true;
+                }
+            } catch (e) {
+                console.error("Error fetching reports:", e);
+                statusMessage.textContent = 'Error: Failed to fetch report list. Check console for details.';
+                statusMessage.classList.add('text-red-500');
+            }
+        }
+        
+        // Set up Firestore listener for the selected report
+        function setupFirestoreListener(reportId) {
+            if (unsubscribeFromReport) {
+                unsubscribeFromReport();
+            }
+            const docPath = `artifacts/${appId}/public/data/boardReports/${reportId}`;
+            const docRef = doc(db, docPath);
+
+            unsubscribeFromReport = onSnapshot(docRef, (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const reportData = docSnapshot.data();
+                    console.log("Current data from Firestore:", reportData);
+                    renderInfographic(reportData);
+                } else {
+                    console.log("No data found for the selected report.");
+                    renderInfographic(null);
+                    // If the selected document no longer exists, refresh the report list
+                    fetchAvailableReports();
+                }
+            }, (error) => {
+                console.error("Error listening to document:", error);
+                statusMessage.textContent = 'Error: Failed to fetch report data. Check console for details.';
+                statusMessage.classList.add('text-red-500');
+            });
+        }
+        
+        // Function to add a new inventory item to the report data
+        addItemBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const item = inventoryItemInput.value;
+            const beginning = beginningInventoryInput.value;
+            const received = stockReceivedInput.value;
+            const dispatched = itemsDispatchedInput.value;
+
+            if (!item || beginning === '' || received === '' || dispatched === '') {
+                statusMessage.textContent = 'Please fill out all inventory fields before adding.';
+                statusMessage.classList.add('text-red-500');
+                return;
+            }
+
+            const ending = parseInt(beginning) + parseInt(received) - parseInt(dispatched);
+
+            reportInventory.push({
+                item: item,
+                beginning: parseInt(beginning),
+                received: parseInt(received),
+                dispatched: parseInt(dispatched),
+                ending: ending
+            });
+
+            // Clear inputs for next item
+            inventoryItemInput.value = '';
+            beginningInventoryInput.value = '';
+            stockReceivedInput.value = '';
+            itemsDispatchedInput.value = '';
+
+            renderInventoryList();
+            statusMessage.textContent = `Added ${item} to the report.`;
+            statusMessage.classList.add('text-green-500');
+        });
+
+        // Function to render the list of added inventory items
+        function renderInventoryList() {
+            inventoryList.innerHTML = '';
+            if (reportInventory.length === 0) {
+                inventoryList.innerHTML = '<p class="text-gray-500 italic">No inventory items added yet.</p>';
+            } else {
+                reportInventory.forEach((item, index) => {
+                    const li = document.createElement('li');
+                    li.classList.add('flex', 'justify-between', 'items-center', 'p-2', 'bg-gray-100', 'rounded-md', 'mb-2');
+                    li.innerHTML = `
+                        <span class="font-semibold">${item.item}</span>
+                        <span class="text-sm">Ending Stock: ${item.ending}</span>
+                        <button type="button" class="text-red-500 hover:text-red-700 transition-colors duration-300" onclick="removeItemFromReport(${index})">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    `;
+                    inventoryList.appendChild(li);
+                });
+            }
+        }
+        
+        window.removeItemFromReport = function(index) {
+            reportInventory.splice(index, 1);
+            renderInventoryList();
+            statusMessage.textContent = 'Item removed.';
+            statusMessage.classList.add('text-green-500');
+        };
+
+        // Function to call the Gemini API to generate an executive summary
+        async function generateExecutiveSummary() {
+            const month = document.getElementById('report-month').value;
+            const quotations = document.getElementById('quotations').value;
+            const conversionRate = document.getElementById('conversion-rate').value;
+            const pipelineValue = document.getElementById('pipeline-value').value;
+            const potentialSales = document.getElementById('potential-sales').value;
+            const revenue = document.getElementById('revenue').value;
+            const cogs = document.getElementById('cogs').value;
+            const opExpenses = document.getElementById('op-expenses').value;
+            
+            if (!month || !quotations || !conversionRate || !pipelineValue || !potentialSales || !revenue || !cogs || !opExpenses || reportInventory.length === 0) {
+                statusMessage.textContent = 'Please fill out all fields and add at least one inventory item before generating the summary.';
+                statusMessage.classList.add('text-red-500');
+                return;
+            }
+
+            // Calculate total ending inventory for the summary
+            const totalEndingInventory = reportInventory.reduce((total, item) => total + item.ending, 0);
+
+            summaryLoadingIndicator.classList.remove('hidden');
+            generateSummaryBtn.disabled = true;
+
+            const prompt = `Act as a senior business analyst for Solarise Insight Limited.
+            Generate a concise, professional executive summary for the monthly board report, highlighting key performance indicators.
+            The report details are as follows:
+            Month: ${month}
+            Sales:
+            - Quotations Sent: ${quotations}
+            - Conversion Rate: ${conversionRate}%
+            - Pipeline Value: KES ${pipelineValue}
+            - Potential Future Sales: KES ${potentialSales}
+            Financials:
+            - Revenue: KES ${revenue}
+            - Cost of Goods Sold (COGS): KES ${cogs}
+            - Operating Expenses: KES ${opExpenses}
+            - Net Profit/Loss: KES ${parseInt(revenue) - parseInt(cogs) - parseInt(opExpenses)}
+            Inventory:
+            - Total Ending Inventory: ${totalEndingInventory} units
+
+            Based on this data, write a 3-4 sentence executive summary.`;
+
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: "Act as a professional business analyst." }]
+                }
+            };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to generate summary.";
+                document.getElementById('executive-summary').value = text;
+                statusMessage.textContent = "Summary generated successfully.";
+                statusMessage.classList.add('text-green-500');
+            } catch (error) {
+                console.error("Error generating summary:", error);
+                statusMessage.textContent = "Error: Failed to generate summary. Check console for details.";
+                statusMessage.classList.add('text-red-500');
+            } finally {
+                summaryLoadingIndicator.classList.add('hidden');
+                generateSummaryBtn.disabled = false;
+            }
+        }
+        
+        // Handle form submission and save data to Firestore
+        reportForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            statusMessage.textContent = 'Saving data...';
+            statusMessage.classList.remove('text-red-500', 'text-green-500');
+
+            // Get form values
+            const monthInput = document.getElementById('report-month').value;
+            const executiveSummary = document.getElementById('executive-summary').value;
+            const quotations = document.getElementById('quotations').value;
+            const conversionRate = document.getElementById('conversion-rate').value;
+            const pipelineValue = document.getElementById('pipeline-value').value;
+            const potentialSales = document.getElementById('potential-sales').value;
+            const revenue = document.getElementById('revenue').value;
+            const cogs = document.getElementById('cogs').value;
+            const opExpenses = document.getElementById('op-expenses').value;
+
+            // Get sales forecast data
+            const salesForecastData = [];
+            let allForecastsFilled = true;
+            for (let i = 0; i < 6; i++) {
+                const forecastSalesInput = document.getElementById(`forecast-sales-${i}`);
+                const forecastAssumptionsInput = document.getElementById(`forecast-assumptions-${i}`);
+                const forecastDate = new Date(new Date().getFullYear(), new Date().getMonth() + i + 1, 1);
+                
+                if (!forecastSalesInput.value || !forecastAssumptionsInput.value) {
+                    allForecastsFilled = false;
+                    break;
+                }
+                
+                salesForecastData.push({
+                    month: monthNames[forecastDate.getMonth()],
+                    year: forecastDate.getFullYear(),
+                    sales: parseInt(forecastSalesInput.value),
+                    assumptions: forecastAssumptionsInput.value
+                });
+            }
+
+            // Simple validation
+            if (!monthInput || !executiveSummary || !quotations || !conversionRate || !pipelineValue || !potentialSales || !revenue || !cogs || !opExpenses || reportInventory.length === 0 || !allForecastsFilled) {
+                statusMessage.textContent = 'Error: Please fill out all the fields and add at least one inventory item.';
+                statusMessage.classList.add('text-red-500');
+                return;
+            }
+
+            // Create a report object to save
+            const reportData = {
+                month: monthInput,
+                executiveSummary,
+                sales: {
+                    quotations: parseInt(quotations),
+                    conversionRate: parseFloat(conversionRate),
+                    pipelineValue: parseInt(pipelineValue),
+                    potentialSales: parseInt(potentialSales)
+                },
+                financials: {
+                    revenue: parseInt(revenue),
+                    cogs: parseInt(cogs),
+                    opExpenses: parseInt(opExpenses),
+                    netProfit: parseInt(revenue) - parseInt(cogs) - parseInt(opExpenses)
+                },
+                inventory: reportInventory,
+                salesForecast: salesForecastData,
+                lastUpdated: new Date()
+            };
+
+            // Save data to Firestore
+            try {
+                const reportId = monthInput.toLowerCase().replace(/\s/g, '-') + '-' + new Date().getTime();
+                const docPath = `artifacts/${appId}/public/data/boardReports/${reportId}`;
+                await setDoc(doc(db, docPath), reportData);
+                statusMessage.textContent = `Report for ${monthInput} saved successfully! 🎉`;
+                statusMessage.classList.add('text-green-500');
+                await fetchAvailableReports(); // Refresh the dropdown
+                reportSelector.value = reportId; // Select the new report
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                reportInventory = []; // Clear inventory array
+                renderInventoryList(); // Clear UI list
+            } catch (e) {
+                console.error("Error saving document: ", e);
+                statusMessage.textContent = 'Error: Could not save data. Check console for details.';
+                statusMessage.classList.add('text-red-500');
+            }
+        });
+
+        // Function to handle report deletion
+        async function deleteSelectedReport() {
+            const selectedReportId = reportSelector.value;
+            if (!selectedReportId || selectedReportId === 'No reports available') {
+                statusMessage.textContent = 'Please select a report to delete.';
+                statusMessage.classList.add('text-red-500');
+                return;
+            }
+
+            // Simple custom confirmation dialog since alert/confirm are not allowed.
+            const userConfirmed = window.confirm(`Are you sure you want to delete the report for "${reportSelector.options[reportSelector.selectedIndex].text}"? This cannot be undone.`);
+            if (userConfirmed) {
+                try {
+                    const docPath = `artifacts/${appId}/public/data/boardReports/${selectedReportId}`;
+                    await deleteDoc(doc(db, docPath));
+                    statusMessage.textContent = `Report deleted successfully! 🗑️`;
+                    statusMessage.classList.add('text-green-500');
+                    await fetchAvailableReports(); // Refresh list and UI
+                } catch (e) {
+                    console.error("Error deleting document: ", e);
+                    statusMessage.textContent = 'Error: Could not delete report. Check console for details.';
+                    statusMessage.classList.add('text-red-500');
+                }
+            }
+        }
+        
+        // Handle report selection change
+        reportSelector.addEventListener('change', (e) => {
+            const selectedReportId = e.target.value;
+            if (selectedReportId && selectedReportId !== 'No reports available') {
+                setupFirestoreListener(selectedReportId);
+            } else {
+                renderInfographic(null);
+            }
+        });
+
+        // Function to render the infographic with data from Firestore
+        function renderInfographic(data) {
+            clearCharts();
+            
+            if (!data) {
+                // Clear all display fields
+                document.getElementById('display-executive-summary').textContent = 'No data available for this month.';
+                document.getElementById('display-quotations').textContent = '--';
+                document.getElementById('display-conversion-rate').textContent = '--%';
+                document.getElementById('display-pipeline-value').textContent = '--';
+                document.getElementById('display-potential-sales').textContent = '--';
+                document.getElementById('display-net-profit').textContent = '--';
+                document.getElementById('inventory-charts-container').innerHTML = '<p class="text-gray-500 italic">No inventory data available.</p>';
+                document.getElementById('sales-forecast-container-display').innerHTML = '<p class="text-gray-500 italic">No sales forecast data available.</p>';
+                return;
+            }
+
+            document.getElementById('display-executive-summary').textContent = data.executiveSummary || 'No summary provided.';
+            document.getElementById('display-quotations').textContent = data.sales.quotations;
+            document.getElementById('display-conversion-rate').textContent = `${data.sales.conversionRate}%`;
+            document.getElementById('display-pipeline-value').textContent = `KES ${data.sales.pipelineValue.toLocaleString()}`;
+            document.getElementById('display-potential-sales').textContent = `KES ${data.sales.potentialSales.toLocaleString()}`;
+            document.getElementById('display-net-profit').textContent = `KES ${data.financials.netProfit.toLocaleString()}`;
+
+            const financialChartData = {
+                labels: ['Revenue', 'COGS', 'Operating Expenses'],
+                data: [data.financials.revenue, data.financials.cogs, data.financials.opExpenses]
+            };
+
+            renderChart('financialChart', 'bar', financialChartData.labels, financialChartData.data, 'Amount (KES)');
+            
+            // Render inventory charts
+            const inventoryChartsContainer = document.getElementById('inventory-charts-container');
+            inventoryChartsContainer.innerHTML = '';
+            if (data.inventory && data.inventory.length > 0) {
+                data.inventory.forEach((item, index) => {
+                    const chartHtml = `
+                        <div class="p-6 bg-white rounded-lg shadow-md">
+                            <h3 class="text-xl font-bold text-[#07575B] mb-4 capitalize">${item.item} Stock Movement</h3>
+                            <div class="chart-container">
+                                <canvas id="inventoryChart-${index}"></canvas>
+                            </div>
+                        </div>
+                    `;
+                    inventoryChartsContainer.insertAdjacentHTML('beforeend', chartHtml);
+
+                    const chartLabels = ['Beginning', 'Received', 'Dispatched', 'Ending'];
+                    const chartData = [item.beginning, item.received, item.dispatched, item.ending];
+                    renderChart(`inventoryChart-${index}`, 'bar', chartLabels, chartData, 'Units');
+                });
+            } else {
+                inventoryChartsContainer.innerHTML = '<p class="text-gray-500 italic">No inventory data available.</p>';
+            }
+
+            // Render sales forecast
+            const salesForecastContainer = document.getElementById('sales-forecast-container-display');
+            salesForecastContainer.innerHTML = '';
+            if (data.salesForecast && data.salesForecast.length > 0) {
+                const forecastTable = `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left table-auto">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="px-4 py-2">Month</th>
+                                    <th class="px-4 py-2">Forecasted Sales (KES)</th>
+                                    <th class="px-4 py-2">Key Activities & Assumptions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forecast-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                salesForecastContainer.insertAdjacentHTML('beforeend', forecastTable);
+                const tableBody = document.getElementById('forecast-table-body');
+                data.salesForecast.forEach(item => {
+                    const row = `
+                        <tr class="border-b border-gray-200">
+                            <td class="px-4 py-2 font-semibold">${item.month} ${item.year}</td>
+                            <td class="px-4 py-2">KES ${item.sales.toLocaleString()}</td>
+                            <td class="px-4 py-2 text-sm text-gray-600">${item.assumptions}</td>
+                        </tr>
+                    `;
+                    tableBody.insertAdjacentHTML('beforeend', row);
+                });
+                
+                // Render the line chart for sales forecast
+                const forecastLabels = data.salesForecast.map(item => item.month);
+                const forecastSales = data.salesForecast.map(item => item.sales);
+                
+                const salesForecastChartData = {
+                    labels: forecastLabels,
+                    data: forecastSales
+                };
+                
+                const chartHtml = `
+                    <div class="mt-8 p-6 bg-white rounded-lg shadow-md">
+                        <h3 class="text-xl font-bold text-[#07575B] mb-4">6-Month Sales Forecast Trend</h3>
+                        <div class="chart-container">
+                            <canvas id="salesForecastChart"></canvas>
+                        </div>
+                    </div>
+                `;
+                salesForecastContainer.insertAdjacentHTML('beforeend', chartHtml);
+                
+                renderChart('salesForecastChart', 'line', salesForecastChartData.labels, salesForecastChartData.data, 'Forecasted Sales (KES)');
+                
+            } else {
+                salesForecastContainer.innerHTML = '<p class="text-gray-500 italic">No sales forecast data available.</p>';
+            }
+        }
+
+        // Generic function to create/update Chart.js charts
+        function renderChart(canvasId, type, labels, data, datasetLabel) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const chartInstance = Chart.getChart(canvasId);
+
+            const backgroundColor = (context) => {
+                const colors = ['#07575B', '#66A5AD', '#E57373', '#C4DFE6'];
+                return colors[context.dataIndex];
+            };
+            
+            const tickCallback = (value) => {
+                if (canvasId === 'financialChart' || canvasId === 'salesForecastChart') {
+                    // Correctly format financial values without dividing by 1000
+                    return `KES ${value.toLocaleString()}`;
+                }
+                return value;
+            }
+
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: tickCallback
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            };
+            
+            if (chartInstance) {
+                chartInstance.data.labels = labels;
+                chartInstance.data.datasets[0].data = data;
+                chartInstance.update();
+            } else {
+                new Chart(ctx, {
+                    type: type,
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: datasetLabel,
+                            data: data,
+                            backgroundColor: backgroundColor,
+                            borderColor: '#07575B',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: chartOptions
+                });
+            }
+        }
+
+        function clearCharts() {
+            // Destroy all Chart.js instances to prevent conflicts
+            Chart.helpers.each(Chart.instances, function(instance) {
+                instance.destroy();
+            });
+        }
+
+        viewDataEntryBtn.addEventListener('click', () => showPage('data-entry'));
+        viewDashboardBtn.addEventListener('click', () => showPage('dashboard'));
+        generateSummaryBtn.addEventListener('click', generateExecutiveSummary);
+        deleteReportBtn.addEventListener('click', deleteSelectedReport);
+
+        window.onload = initApp;
+
+    </script>
+
+    <header class="bg-[#003B46] text-white p-8 text-center rounded-t-lg shadow-lg">
+        <h1 class="text-4xl font-bold mb-2">Solarise Insight Limited</h1>
+        <p class="text-xl">Monthly Board Report App</p>
+    </header>
+
+    <main class="container mx-auto bg-white rounded-b-lg shadow-lg p-6 mt-0">
+        <!-- Status and Loading -->
+        <div id="loading-indicator" class="text-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-4 border-t-4 border-t-[#07575B] border-gray-200 mx-auto"></div>
+            <p class="mt-4 text-lg text-[#07575B]">Connecting to database...</p>
+        </div>
+        <div id="status-message" class="text-center mt-4 text-sm font-semibold"></div>
+        <div id="user-id-display" class="text-center text-xs text-gray-400 mt-2"></div>
+
+        <!-- Navigation Buttons -->
+        <div class="flex justify-center space-x-4 mb-8">
+            <button id="view-data-entry-btn" class="px-6 py-2 rounded-lg font-bold text-white bg-[#66A5AD] hover:bg-[#07575B] transition-colors duration-300">
+                Data Entry
+            </button>
+            <button id="view-dashboard-btn" class="px-6 py-2 rounded-lg font-bold text-white bg-[#66A5AD] hover:bg-[#07575B] transition-colors duration-300">
+                Dashboard
+            </button>
+        </div>
+
+        <!-- Data Entry Page -->
+        <div id="data-entry-page" class="hidden">
+            <h2 class="text-2xl font-bold text-[#07575B] mb-4">Data Entry Form</h2>
+            <form id="report-form" class="space-y-6">
+                 <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">Report Details</h3>
+                    <div>
+                        <label for="report-month" class="block text-sm font-medium text-gray-700">Report Month (e.g., "August 2025")</label>
+                        <input type="text" id="report-month" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., August 2025" required>
+                    </div>
+                </div>
+
+                <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4 flex items-center justify-between">
+                        Executive Summary
+                        <div class="flex items-center space-x-2">
+                             <div id="summary-loading-indicator" class="hidden animate-spin rounded-full h-5 w-5 border-2 border-t-2 border-t-[#07575B] border-gray-200"></div>
+                             <button type="button" id="generate-summary-btn" class="px-4 py-2 text-sm rounded-full font-semibold text-[#07575B] bg-[#C4DFE6] hover:bg-[#A5D2E6] transition-colors duration-300">
+                                ✨ Generate Summary
+                            </button>
+                        </div>
+                    </h3>
+                    <textarea id="executive-summary" class="w-full h-32 p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="Enter a summary of the month's performance..."></textarea>
+                </div>
+
+                <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">Sales Performance</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="quotations" class="block text-sm font-medium text-gray-700">Quotations Sent</label>
+                            <input type="number" id="quotations" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 128" required>
+                        </div>
+                        <div>
+                            <label for="conversion-rate" class="block text-sm font-medium text-gray-700">Conversion Rate (%)</label>
+                            <input type="number" id="conversion-rate" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 22" required>
+                        </div>
+                        <div>
+                            <label for="pipeline-value" class="block text-sm font-medium text-gray-700">Pipeline Value (KES)</label>
+                            <input type="number" id="pipeline-value" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 2300000" required>
+                        </div>
+                        <div>
+                            <label for="potential-sales" class="block text-sm font-medium text-gray-700">Potential Future Sales (KES)</label>
+                            <input type="number" id="potential-sales" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 850000" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">Financial Performance</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label for="revenue" class="block text-sm font-medium text-gray-700">Revenue (KES)</label>
+                            <input type="number" id="revenue" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 500000" required>
+                        </div>
+                        <div>
+                            <label for="cogs" class="block text-sm font-medium text-gray-700">COGS (KES)</label>
+                            <input type="number" id="cogs" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 200000" required>
+                        </div>
+                        <div>
+                            <label for="op-expenses" class="block text-sm font-medium text-gray-700">Operating Expenses (KES)</label>
+                            <input type="number" id="op-expenses" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 150000" required>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">6-Month Rolling Sales Forecast</h3>
+                    <div id="sales-forecast-container">
+                        <!-- Forecast inputs will be dynamically generated here -->
+                    </div>
+                </div>
+
+                <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">Inventory Movement</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="inventory-item-input" class="block text-sm font-medium text-gray-700">Inventory Item</label>
+                            <select id="inventory-item-input" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]">
+                                <option value="">Select an item...</option>
+                                <option value="panels">Panels</option>
+                                <option value="hybrid inverters">Hybrid Inverters</option>
+                                <option value="offgrid inverters">Offgrid Inverters</option>
+                                <option value="batteries">Batteries</option>
+                                <option value="splicing kits">Splicing Kits</option>
+                                <option value="railings">Railings</option>
+                                <option value="clamps">Clamps</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="beginning-inventory" class="block text-sm font-medium text-gray-700">Beginning Inventory (Units)</label>
+                            <input type="number" id="beginning-inventory" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 5000">
+                        </div>
+                        <div>
+                            <label for="stock-received" class="block text-sm font-medium text-gray-700">Stock Received (Units)</label>
+                            <input type="number" id="stock-received" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 2500">
+                        </div>
+                        <div>
+                            <label for="items-dispatched" class="block text-sm font-medium text-gray-700">Items Dispatched (Units)</label>
+                            <input type="number" id="items-dispatched" class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]" placeholder="e.g., 2200">
+                        </div>
+                    </div>
+                    <button type="button" id="add-item-btn" class="mt-4 w-full bg-[#C4DFE6] text-[#07575B] font-bold px-6 py-3 rounded-lg hover:bg-[#A5D2E6] transition-colors duration-300">
+                        Add Item to Report
+                    </button>
+                    <div class="mt-4">
+                        <h4 class="text-md font-semibold text-gray-700 mb-2">Items to be included in this report:</h4>
+                        <ul id="inventory-list" class="space-y-2">
+                            <p class="text-gray-500 italic">No inventory items added yet.</p>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="flex justify-end pt-4">
+                    <button type="submit" class="bg-[#07575B] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#003B46] transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#07575B]">
+                        Save Report
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="hidden">
+            <h2 class="text-2xl font-bold text-[#07575B] mb-4">Real-Time Infographic</h2>
+            
+            <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
+                <label for="report-selector" class="text-lg font-medium">Select Report:</label>
+                <select id="report-selector" class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]"></select>
+                <button id="delete-report-btn" class="px-6 py-2 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500" disabled>
+                    Delete Selected Report
+                </button>
+            </div>
+
+            <div class="p-6 bg-white rounded-lg shadow-md mb-6">
+                <h3 class="text-xl font-bold text-[#07575B] mb-2">Executive Summary</h3>
+                <p id="display-executive-summary" class="text-lg"></p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <!-- Sales Performance Cards -->
+                <div class="p-6 bg-white rounded-lg shadow-md">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">Quotations & Conversion</h3>
+                    <div class="text-center space-y-4">
+                        <div>
+                            <p class="text-5xl font-bold text-[#66A5AD]" id="display-quotations">--</p>
+                            <p class="text-lg">Quotations Sent</p>
+                        </div>
+                        <div>
+                            <p class="text-5xl font-bold text-[#C4DFE6]" id="display-conversion-rate">--%</p>
+                            <p class="text-lg">Conversion Rate</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6 bg-white rounded-lg shadow-md">
+                     <h3 class="text-xl font-bold text-[#07575B] mb-4">Pipeline & Future Sales</h3>
+                     <div class="text-center space-y-4">
+                         <div>
+                             <p class="text-4xl font-bold text-[#07575B]" id="display-pipeline-value">--</p>
+                             <p class="text-lg">Pipeline Value</p>
+                         </div>
+                         <div>
+                             <p class="text-4xl font-bold text-[#07575B]" id="display-potential-sales">--</p>
+                             <p class="text-lg">Potential Future Sales</p>
+                         </div>
+                     </div>
+                 </div>
+
+                <div class="md:col-span-2 p-6 bg-white rounded-lg shadow-md">
+                    <h3 class="text-xl font-bold text-[#07575B] mb-4">Financial Performance</h3>
+                    <div class="chart-container">
+                        <canvas id="financialChart"></canvas>
+                    </div>
+                    <div class="text-center mt-4">
+                        <p class="text-5xl font-bold text-[#66A5AD]" id="display-net-profit">--</p>
+                        <p class="text-lg">Net Profit (KES)</p>
+                    </div>
+                </div>
+                
+                <div id="sales-forecast-container-display" class="md:col-span-2 p-6 bg-white rounded-lg shadow-md">
+                     <h3 class="text-xl font-bold text-[#07575B] mb-4">6-Month Rolling Sales Forecast</h3>
+                     <!-- Forecast table and chart will be rendered here -->
+                </div>
+                
+                <div id="inventory-charts-container" class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Inventory charts will be dynamically added here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center p-4 text-gray-500 mt-4">
+        <p>&copy; 2025 Solarise Insight Limited. All Rights Reserved.</p>
+    </footer>
+
+</body>
+</html>
