@@ -30,9 +30,20 @@
     <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
+
+        // IMPORTANT: Replace the entire 'firebaseConfig' object below with your project's configuration keys.
+        // You can find this object in your Firebase Console under Project settings -> Your apps.
+        // It should look like this (but with your actual keys):
+        // const firebaseConfig = {
+        //   apiKey: "AIzaSyAIzY...",
+        //   authDomain: "your-project-id.firebaseapp.com",
+        //   projectId: "your-project-id",
+        //   storageBucket: "your-project-id.appspot.com",
+        //   messagingSenderId: "1234567890",
+        //   appId: "1:1234567890:web:abcdefghij"
+        // };
         const firebaseConfig = {
     apiKey: "AIzaSyAIzY12pnwiKg8omuFaXMiJ3w10OLX-_Hk",
     authDomain: "solarise-4d48f.firebaseapp.com",
@@ -42,21 +53,17 @@
     appId: "1:883127539875:web:8b8c3067049476e4a08716",
     measurementId: "G-DKRBP1FTNF"
   };
-
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-
+        
         // GLOBAL VARIABLE DECLARATIONS
         // These variables must be declared here to be accessible throughout the script
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        
+        let db;
+        let auth;
         let userId = 'anonymous';
         let unsubscribeFromReport = null;
         let reportInventory = [];
         let currentView = 'dashboard';
-        
+
         // UI elements
         const loadingIndicator = document.getElementById('loading-indicator');
         const dataEntryPage = document.getElementById('data-entry-page');
@@ -84,6 +91,11 @@
         // Wait for authentication state to be ready before proceeding
         async function initApp() {
             try {
+                // Initialize Firebase
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                // Since this app will be hosted outside the Canvas environment, we will use anonymous sign-in.
                 await signInAnonymously(auth);
                 userId = auth.currentUser.uid;
                 userIdDisplay.textContent = `User ID: ${userId}`;
@@ -179,7 +191,10 @@
         // Fetch available reports and populate the dropdown
         async function fetchAvailableReports() {
             try {
-                const reportsCollectionRef = collection(db, 'boardReports');
+                // Determine the correct collection path based on environment
+                const reportsCollectionPath = appId === 'default-app-id' ? 'boardReports' : `artifacts/${appId}/public/data/boardReports`;
+                const reportsCollectionRef = collection(db, reportsCollectionPath);
+                
                 const querySnapshot = await getDocs(reportsCollectionRef);
                 const reports = [];
                 querySnapshot.forEach((doc) => {
@@ -222,7 +237,8 @@
             if (unsubscribeFromReport) {
                 unsubscribeFromReport();
             }
-            const docPath = `artifacts/${appId}/public/data/boardReports/${reportId}`;
+            // Determine the correct document path based on environment
+            const docPath = appId === 'default-app-id' ? `boardReports/${reportId}` : `artifacts/${appId}/public/data/boardReports/${reportId}`;
             const docRef = doc(db, docPath);
 
             unsubscribeFromReport = onSnapshot(docRef, (docSnapshot) => {
@@ -292,7 +308,7 @@
                         <span class="text-sm">Ending Stock: ${item.ending}</span>
                         <button type="button" class="text-red-500 hover:text-red-700 transition-colors duration-300" onclick="removeItemFromReport(${index})">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 1 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clip-rule="evenodd" />
                             </svg>
                         </button>
                     `;
@@ -451,7 +467,8 @@
             // Save data to Firestore
             try {
                 const reportId = monthInput.toLowerCase().replace(/\s/g, '-') + '-' + new Date().getTime();
-                const docPath = `artifacts/${appId}/public/data/boardReports/${reportId}`;
+                // Determine the correct document path based on environment
+                const docPath = appId === 'default-app-id' ? `boardReports/${reportId}` : `artifacts/${appId}/public/data/boardReports/${reportId}`;
                 await setDoc(doc(db, docPath), reportData);
                 statusMessage.textContent = `Report for ${monthInput} saved successfully! 🎉`;
                 statusMessage.classList.add('text-green-500');
@@ -480,7 +497,8 @@
             const userConfirmed = window.confirm(`Are you sure you want to delete the report for "${reportSelector.options[reportSelector.selectedIndex].text}"? This cannot be undone.`);
             if (userConfirmed) {
                 try {
-                    const docPath = `artifacts/${appId}/public/data/boardReports/${selectedReportId}`;
+                     // Determine the correct document path based on environment
+                    const docPath = appId === 'default-app-id' ? `boardReports/${selectedReportId}` : `artifacts/${appId}/public/data/boardReports/${selectedReportId}`;
                     await deleteDoc(doc(db, docPath));
                     statusMessage.textContent = `Report deleted successfully! 🗑️`;
                     statusMessage.classList.add('text-green-500');
