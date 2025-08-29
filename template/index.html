@@ -176,7 +176,7 @@
         // Fetch available reports and populate the dropdown
         async function fetchAvailableReports() {
             try {
-                const reportsCollectionRef = collection(db, `artifacts/${appId}/public/data/boardReports`);
+                const reportsCollectionRef = collection(db, 'boardReports');
                 const querySnapshot = await getDocs(reportsCollectionRef);
                 const reports = [];
                 querySnapshot.forEach((doc) => {
