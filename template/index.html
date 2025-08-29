@@ -33,8 +33,6 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = {
     apiKey: "AIzaSyAIzY12pnwiKg8omuFaXMiJ3w10OLX-_Hk",
     authDomain: "solarise-4d48f.firebaseapp.com",
@@ -44,7 +42,6 @@
     appId: "1:883127539875:web:8b8c3067049476e4a08716",
     measurementId: "G-DKRBP1FTNF"
   };
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
