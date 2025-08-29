@@ -48,6 +48,16 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
+        // GLOBAL VARIABLE DECLARATIONS
+        // These variables must be declared here to be accessible throughout the script
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        let db;
+        let auth;
+        let userId = 'anonymous';
+        let unsubscribeFromReport = null;
+        let reportInventory = [];
+        let currentView = 'dashboard';
+        
         // UI elements
         const loadingIndicator = document.getElementById('loading-indicator');
         const dataEntryPage = document.getElementById('data-entry-page');
