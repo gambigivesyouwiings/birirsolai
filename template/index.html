@@ -60,7 +60,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Enable debug logging for Firestore
@@ -79,13 +79,13 @@
   };
         
         // GLOBAL VARIABLE DECLARATIONS
-        // These variables must be declared here to be accessible throughout the script
         let db;
         let auth;
         let userId = 'anonymous';
         let unsubscribeFromReport = null;
         let reportInventory = [];
         let currentView = 'dashboard';
+        let currentEditingReportId = null; // New variable to track the report being edited
 
         // UI elements
         const loadingIndicator = document.getElementById('loading-indicator');
@@ -100,6 +100,7 @@
         const generateSummaryBtn = document.getElementById('generate-summary-btn');
         const summaryLoadingIndicator = document.getElementById('summary-loading-indicator');
         const deleteReportBtn = document.getElementById('delete-report-btn');
+        const editReportBtn = document.getElementById('edit-report-btn'); // New edit button
         const inventoryList = document.getElementById('inventory-list');
         const addItemBtn = document.getElementById('add-item-btn');
         const inventoryItemInput = document.getElementById('inventory-item-input');
@@ -110,6 +111,9 @@
         const modal = document.getElementById('myModal');
         const modalMessage = document.getElementById('modal-message');
         const closeBtn = document.getElementsByClassName("close-btn")[0];
+        const saveReportBtn = document.getElementById('save-report-btn');
+        const reportTitle = document.getElementById('report-title');
+
         
         // Helper array for month names
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -155,7 +159,7 @@
                 
                 // Add event listener to prevent form submission on Enter key
                 reportForm.addEventListener('keydown', handleEnterKey);
-
+                
             } catch (error) {
                 console.error("Error during Firebase authentication:", error);
                 statusMessage.textContent = 'Error: Could not connect to the database. Check console for details.';
@@ -167,23 +171,14 @@
         
         // Function to handle the Enter key press
         function handleEnterKey(event) {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA') {
                 const formElements = Array.from(reportForm.elements).filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 && el.id !== 'add-item-btn' && el.id !== 'generate-summary-btn');
                 const currentElement = event.target;
                 const currentIndex = formElements.indexOf(currentElement);
                 
-                // If it's the inventory section, check if we need to add a new item
-                if (currentElement.id === 'items-dispatched') {
-                    event.preventDefault(); // Prevent form submission
-                    addItemBtn.click();
-                    // Move focus to the first inventory input after adding the item
-                    document.getElementById('inventory-item-input').focus();
-                } else if (currentIndex > -1 && currentIndex < formElements.length - 1) {
-                    event.preventDefault(); // Prevent form submission
-                    formElements[currentIndex + 1].focus();
-                } else if (currentIndex === formElements.length - 1) {
-                    // This is the last input field, so let's prevent form submission
+                if (currentIndex > -1 && currentIndex < formElements.length - 1) {
                     event.preventDefault();
+                    formElements[currentIndex + 1].focus();
                 }
             }
         }
@@ -224,14 +219,27 @@
             
             dataEntryPage.classList.add('hidden');
             dashboardPage.classList.add('hidden');
-
+            
+            // Reset the form and editing state when switching to data entry
             if (pageName === 'data-entry') {
+                resetForm();
                 dataEntryPage.classList.remove('hidden');
                 viewDataEntryBtn.classList.add('nav-button-active');
+                reportTitle.textContent = "New Monthly Report";
             } else {
                 dashboardPage.classList.remove('hidden');
                 viewDashboardBtn.classList.add('nav-button-active');
             }
+        }
+        
+        // Function to reset the form fields and editing state
+        function resetForm() {
+            reportForm.reset();
+            reportInventory = [];
+            renderInventoryList();
+            generateForecastInputs();
+            currentEditingReportId = null;
+            saveReportBtn.textContent = 'Save Report';
         }
 
         // Fetch available reports and populate the dropdown
@@ -244,7 +252,9 @@
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
                     // Sort the retrieved data in-memory since Firestore orderBy() requires an index.
-                    reports.push({ id: doc.id, month: data.month, lastUpdated: data.lastUpdated.toDate() });
+                    if (data.lastUpdated) {
+                        reports.push({ id: doc.id, month: data.month, lastUpdated: data.lastUpdated.toDate() });
+                    }
                 });
 
                 // Sort reports by lastUpdated date descending
@@ -262,12 +272,14 @@
                     reportSelector.value = reports[0].id;
                     setupFirestoreListener(reports[0].id);
                     deleteReportBtn.disabled = false;
+                    editReportBtn.disabled = false;
                 } else {
                     const option = document.createElement('option');
                     option.textContent = 'No reports available';
                     reportSelector.appendChild(option);
                     renderInfographic(null);
                     deleteReportBtn.disabled = true;
+                    editReportBtn.disabled = true;
                 }
             } catch (e) {
                 console.error("Error fetching reports:", e);
@@ -310,8 +322,7 @@
             const dispatched = itemsDispatchedInput.value;
 
             if (!item || beginning === '' || received === '' || dispatched === '') {
-                statusMessage.textContent = 'Please fill out all inventory fields before adding.';
-                statusMessage.classList.add('text-red-500');
+                showMessageBox('Please fill out all inventory fields before adding.');
                 return;
             }
 
@@ -378,8 +389,7 @@
             const opExpenses = document.getElementById('op-expenses').value;
             
             if (!month || !quotations || !conversionRate || !pipelineValue || !potentialSales || !revenue || !cogs || !opExpenses || reportInventory.length === 0) {
-                statusMessage.textContent = 'Please fill out all fields and add at least one inventory item before generating the summary.';
-                statusMessage.classList.add('text-red-500');
+                showMessageBox('Please fill out all fields and add at least one inventory item before generating the summary.');
                 return;
             }
 
@@ -480,8 +490,7 @@
 
             // Simple validation
             if (!monthInput || !executiveSummary || !quotations || !conversionRate || !pipelineValue || !potentialSales || !revenue || !cogs || !opExpenses || reportInventory.length === 0 || !allForecastsFilled) {
-                statusMessage.textContent = 'Error: Please fill out all the fields and add at least one inventory item.';
-                statusMessage.classList.add('text-red-500');
+                showMessageBox('Error: Please fill out all the fields and add at least one inventory item.');
                 return;
             }
 
@@ -508,15 +517,16 @@
 
             // Save data to Firestore
             try {
-                const reportId = monthInput.toLowerCase().replace(/\s/g, '-') + '-' + new Date().getTime();
-                await setDoc(doc(db, 'boardReports', reportId), reportData);
+                // Determine whether to update an existing document or create a new one
+                const docId = currentEditingReportId || (monthInput.toLowerCase().replace(/\s/g, '-') + '-' + new Date().getTime());
+                await setDoc(doc(db, 'boardReports', docId), reportData, { merge: true }); // Use merge:true for updates
+                
                 statusMessage.textContent = `Report for ${monthInput} saved successfully! 🎉`;
                 statusMessage.classList.add('text-green-500');
                 await fetchAvailableReports(); // Refresh the dropdown
-                reportSelector.value = reportId; // Select the new report
+                reportSelector.value = docId; // Select the new report
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-                reportInventory = []; // Clear inventory array
-                renderInventoryList(); // Clear UI list
+                resetForm();
             } catch (e) {
                 console.error("Error saving document: ", e);
                 statusMessage.textContent = 'Error: Could not save data. Check console for details.';
@@ -528,14 +538,12 @@
         async function deleteSelectedReport() {
             const selectedReportId = reportSelector.value;
             if (!selectedReportId || selectedReportId === 'No reports available') {
-                statusMessage.textContent = 'Please select a report to delete.';
-                statusMessage.classList.add('text-red-500');
+                showMessageBox('Please select a report to delete.');
                 return;
             }
 
             // Simple custom confirmation dialog since alert/confirm are not allowed.
-            const userConfirmed = window.confirm(`Are you sure you want to delete the report for "${reportSelector.options[reportSelector.selectedIndex].text}"? This cannot be undone.`);
-            if (userConfirmed) {
+            if (confirm(`Are you sure you want to delete the report for "${reportSelector.options[reportSelector.selectedIndex].text}"? This cannot be undone.`)) {
                 try {
                     await deleteDoc(doc(db, 'boardReports', selectedReportId));
                     statusMessage.textContent = `Report deleted successfully! 🗑️`;
@@ -549,6 +557,66 @@
             }
         }
         
+        // New function to load a report into the form for editing
+        async function loadReportForEditing() {
+            const selectedReportId = reportSelector.value;
+            if (!selectedReportId || selectedReportId === 'No reports available') {
+                showMessageBox('Please select a report to edit.');
+                return;
+            }
+            
+            showPage('data-entry');
+            statusMessage.textContent = 'Loading report...';
+            statusMessage.classList.remove('text-red-500', 'text-green-500');
+            
+            try {
+                const docRef = doc(db, 'boardReports', selectedReportId);
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    currentEditingReportId = selectedReportId;
+                    saveReportBtn.textContent = 'Update Report';
+                    reportTitle.textContent = `Editing: ${data.month}`;
+                    
+                    // Populate the form fields
+                    document.getElementById('report-month').value = data.month;
+                    document.getElementById('executive-summary').value = data.executiveSummary;
+                    document.getElementById('quotations').value = data.sales.quotations;
+                    document.getElementById('conversion-rate').value = data.sales.conversionRate;
+                    document.getElementById('pipeline-value').value = data.sales.pipelineValue;
+                    document.getElementById('potential-sales').value = data.sales.potentialSales;
+                    document.getElementById('revenue').value = data.financials.revenue;
+                    document.getElementById('cogs').value = data.financials.cogs;
+                    document.getElementById('op-expenses').value = data.financials.opExpenses;
+                    
+                    // Populate inventory
+                    reportInventory = data.inventory || [];
+                    renderInventoryList();
+                    
+                    // Populate sales forecast
+                    data.salesForecast.forEach((item, index) => {
+                        const salesInput = document.getElementById(`forecast-sales-${index}`);
+                        const assumptionsInput = document.getElementById(`forecast-assumptions-${index}`);
+                        if (salesInput && assumptionsInput) {
+                            salesInput.value = item.sales;
+                            assumptionsInput.value = item.assumptions;
+                        }
+                    });
+                    
+                    statusMessage.textContent = `Report for ${data.month} loaded for editing.`;
+                    statusMessage.classList.add('text-green-500');
+                } else {
+                    showMessageBox('Error: Report not found.');
+                    resetForm();
+                }
+            } catch (e) {
+                console.error("Error loading document for editing:", e);
+                showMessageBox('Error: Failed to load report for editing. Check console for details.');
+                resetForm();
+            }
+        }
+
         // Handle report selection change
         reportSelector.addEventListener('change', (e) => {
             const selectedReportId = e.target.value;
@@ -683,7 +751,6 @@
             
             const tickCallback = (value) => {
                 if (canvasId === 'financialChart' || canvasId === 'salesForecastChart') {
-                    // Correctly format financial values without dividing by 1000
                     return `KES ${value.toLocaleString()}`;
                 }
                 return value;
@@ -745,6 +812,7 @@
         viewDashboardBtn.addEventListener('click', () => showPage('dashboard'));
         generateSummaryBtn.addEventListener('click', generateExecutiveSummary);
         deleteReportBtn.addEventListener('click', deleteSelectedReport);
+        editReportBtn.addEventListener('click', loadReportForEditing);
 
         window.onload = initApp;
 
@@ -784,7 +852,7 @@
 
         <!-- Data Entry Page -->
         <div id="data-entry-page" class="hidden">
-            <h2 class="text-2xl font-bold text-[#07575B] mb-4">Data Entry Form</h2>
+            <h2 id="report-title" class="text-2xl font-bold text-[#07575B] mb-4">New Monthly Report</h2>
             <form id="report-form" class="space-y-6">
                  <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
                     <h3 class="text-xl font-bold text-[#07575B] mb-4">Report Details</h3>
@@ -895,7 +963,7 @@
                 </div>
 
                 <div class="flex justify-end pt-4">
-                    <button type="submit" class="bg-[#07575B] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#003B46] transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#07575B]">
+                    <button type="submit" id="save-report-btn" class="bg-[#07575B] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#003B46] transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#07575B]">
                         Save Report
                     </button>
                 </div>
@@ -909,8 +977,11 @@
             <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
                 <label for="report-selector" class="text-lg font-medium">Select Report:</label>
                 <select id="report-selector" class="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#66A5AD]"></select>
-                <button id="delete-report-btn" class="px-6 py-2 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500" disabled>
-                    Delete Selected Report
+                <button id="delete-report-btn" class="px-4 py-2 rounded-lg font-bold text-white bg-red-500 hover:bg-red-600 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500" disabled>
+                    Delete
+                </button>
+                <button id="edit-report-btn" class="px-4 py-2 rounded-lg font-bold text-white bg-[#66A5AD] hover:bg-[#07575B] transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#66A5AD]" disabled>
+                    Edit
                 </button>
             </div>
 
