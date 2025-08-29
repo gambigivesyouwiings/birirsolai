@@ -23,6 +23,35 @@
         .nav-button-active {
             background-color: #07575B;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 24px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation-name: animatetop;
+            animation-duration: 0.4s;
+        }
+        @keyframes animatetop {
+            from { top: -300px; opacity: 0 }
+            to { top: 0; opacity: 1 }
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 p-4 md:p-8">
@@ -32,18 +61,13 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Enable debug logging for Firestore
+        setLogLevel('debug');
+        
         // IMPORTANT: Replace the entire 'firebaseConfig' object below with your project's configuration keys.
         // You can find this object in your Firebase Console under Project settings -> Your apps.
-        // It should look like this (but with your actual keys):
-        // const firebaseConfig = {
-        //   apiKey: "AIzaSyAIzY...",
-        //   authDomain: "your-project-id.firebaseapp.com",
-        //   projectId: "your-project-id",
-        //   storageBucket: "your-project-id.appspot.com",
-        //   messagingSenderId: "1234567890",
-        //   appId: "1:1234567890:web:abcdefghij"
-        // };
         const firebaseConfig = {
     apiKey: "AIzaSyAIzY12pnwiKg8omuFaXMiJ3w10OLX-_Hk",
     authDomain: "solarise-4d48f.firebaseapp.com",
@@ -56,7 +80,6 @@
         
         // GLOBAL VARIABLE DECLARATIONS
         // These variables must be declared here to be accessible throughout the script
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         let db;
         let auth;
         let userId = 'anonymous';
@@ -84,10 +107,31 @@
         const stockReceivedInput = document.getElementById('stock-received');
         const itemsDispatchedInput = document.getElementById('items-dispatched');
         const salesForecastContainer = document.getElementById('sales-forecast-container');
+        const modal = document.getElementById('myModal');
+        const modalMessage = document.getElementById('modal-message');
+        const closeBtn = document.getElementsByClassName("close-btn")[0];
         
         // Helper array for month names
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+        // Function to show the custom message box
+        function showMessageBox(message) {
+            modalMessage.textContent = message;
+            modal.style.display = "flex";
+        }
+        
+        // When the user clicks on (x), close the modal
+        closeBtn.onclick = function() {
+            modal.style.display = "none";
+        }
+        
+        // When the user clicks anywhere outside of the modal, close it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+        
         // Wait for authentication state to be ready before proceeding
         async function initApp() {
             try {
@@ -95,8 +139,10 @@
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                // Since this app will be hosted outside the Canvas environment, we will use anonymous sign-in.
+                
+                // Authenticate the user anonymously
                 await signInAnonymously(auth);
+                
                 userId = auth.currentUser.uid;
                 userIdDisplay.textContent = `User ID: ${userId}`;
                 console.log('Firebase initialized and user authenticated:', userId);
@@ -191,9 +237,7 @@
         // Fetch available reports and populate the dropdown
         async function fetchAvailableReports() {
             try {
-                // Determine the correct collection path based on environment
-                const reportsCollectionPath = appId === 'default-app-id' ? 'boardReports' : `artifacts/${appId}/public/data/boardReports`;
-                const reportsCollectionRef = collection(db, reportsCollectionPath);
+                const reportsCollectionRef = collection(db, 'boardReports');
                 
                 const querySnapshot = await getDocs(reportsCollectionRef);
                 const reports = [];
@@ -237,9 +281,7 @@
             if (unsubscribeFromReport) {
                 unsubscribeFromReport();
             }
-            // Determine the correct document path based on environment
-            const docPath = appId === 'default-app-id' ? `boardReports/${reportId}` : `artifacts/${appId}/public/data/boardReports/${reportId}`;
-            const docRef = doc(db, docPath);
+            const docRef = doc(db, 'boardReports', reportId);
 
             unsubscribeFromReport = onSnapshot(docRef, (docSnapshot) => {
                 if (docSnapshot.exists()) {
@@ -308,7 +350,7 @@
                         <span class="text-sm">Ending Stock: ${item.ending}</span>
                         <button type="button" class="text-red-500 hover:text-red-700 transition-colors duration-300" onclick="removeItemFromReport(${index})">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 1 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clip-rule="evenodd" />
                             </svg>
                         </button>
                     `;
@@ -467,9 +509,7 @@
             // Save data to Firestore
             try {
                 const reportId = monthInput.toLowerCase().replace(/\s/g, '-') + '-' + new Date().getTime();
-                // Determine the correct document path based on environment
-                const docPath = appId === 'default-app-id' ? `boardReports/${reportId}` : `artifacts/${appId}/public/data/boardReports/${reportId}`;
-                await setDoc(doc(db, docPath), reportData);
+                await setDoc(doc(db, 'boardReports', reportId), reportData);
                 statusMessage.textContent = `Report for ${monthInput} saved successfully! 🎉`;
                 statusMessage.classList.add('text-green-500');
                 await fetchAvailableReports(); // Refresh the dropdown
@@ -497,9 +537,7 @@
             const userConfirmed = window.confirm(`Are you sure you want to delete the report for "${reportSelector.options[reportSelector.selectedIndex].text}"? This cannot be undone.`);
             if (userConfirmed) {
                 try {
-                     // Determine the correct document path based on environment
-                    const docPath = appId === 'default-app-id' ? `boardReports/${selectedReportId}` : `artifacts/${appId}/public/data/boardReports/${selectedReportId}`;
-                    await deleteDoc(doc(db, docPath));
+                    await deleteDoc(doc(db, 'boardReports', selectedReportId));
                     statusMessage.textContent = `Report deleted successfully! 🗑️`;
                     statusMessage.classList.add('text-green-500');
                     await fetchAvailableReports(); // Refresh list and UI
@@ -725,6 +763,14 @@
         </div>
         <div id="status-message" class="text-center mt-4 text-sm font-semibold"></div>
         <div id="user-id-display" class="text-center text-xs text-gray-400 mt-2"></div>
+
+        <!-- The Modal/Message Box -->
+        <div id="myModal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn float-right text-3xl font-bold text-gray-700 hover:text-gray-900 cursor-pointer">&times;</span>
+                <p id="modal-message" class="text-lg text-center mt-4"></p>
+            </div>
+        </div>
 
         <!-- Navigation Buttons -->
         <div class="flex justify-center space-x-4 mb-8">
