@@ -81,13 +81,8 @@
         // Wait for authentication state to be ready before proceeding
         async function initApp() {
             try {
-                if (initialAuthToken) {
-                    const userCredential = await signInWithCustomToken(auth, initialAuthToken);
-                    userId = userCredential.user.uid;
-                } else {
-                    const userCredential = await signInAnonymously(auth);
-                    userId = userCredential.user.uid;
-                }
+                await signInAnonymously(auth);
+                userId = auth.currentUser.uid;
                 userIdDisplay.textContent = `User ID: ${userId}`;
                 console.log('Firebase initialized and user authenticated:', userId);
                 
